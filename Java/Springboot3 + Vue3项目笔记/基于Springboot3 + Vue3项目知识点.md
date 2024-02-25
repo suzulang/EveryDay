@@ -294,64 +294,64 @@ instance.interceptors.response.use(
 
 4. 修改springboot代码，做构建镜像前的准备
 
-   1. application.yaml
+   - application.yaml
 
-      ```shell
-      spring:
-        datasource:
-          driver-class-name: com.mysql.cj.jdbc.Driver
-          url: jdbc:mysql://${db.host}:3306/nytd_forum
-          username: root
-          password: ${db.pw}
-        profiles:
-          active: dev #本地测试改成localhost
-        data:
-          redis:
-            host: ${redis.host}
-      ```
+   ```shell
+   spring:
+     datasource:
+       driver-class-name: com.mysql.cj.jdbc.Driver
+       url: jdbc:mysql://${db.host}:3306/nytd_forum
+       username: root
+       password: ${db.pw}
+     profiles:
+       active: dev #本地测试改成localhost
+     data:
+       redis:
+         host: ${redis.host}
+   ```
 
-   2. 创建application-dev.yaml和application-local.yaml
+   - 创建application-dev.yaml和application-local.yaml
 
-      ```shell
-      #application-dev.yaml
-      db:
-        host: mysql-demo #这里用容器名
-        pw: 123456
-      redis:
-        host: redis-demo #这里用容器名
-      ```
+   ```shell
+   #application-dev.yaml
+   db:
+     host: mysql-demo #这里用容器名
+     pw: 123456
+   redis:
+     host: redis-demo #这里用容器名
+   ```
 
-      ```shell
-      #application-local.yaml
-      db:
-        host: localhost
-        pw: 983003972
-      redis:
-        host: localhost
-      ```
+   ```shell
+   #application-local.yaml
+   db:
+     host: localhost
+     pw: 983003972
+   redis:
+     host: localhost
+   ```
 
-   3. 进行打包，并且创建Dockerfile
+   - 进行打包，并且创建Dockerfile
 
-      ```dockerfile
-      # 基础镜像
-      FROM openjdk:17-jdk-alpine
-      # 设定时区
-      ENV TZ=Asia/Shanghai
-      RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone
-      
-      # 拷贝jar包
-      # 这里要注意前面是宿主机上的jar包的名字
-      COPY nytd-forum-demo-0.0.1-SNAPSHOT.jar /app.jar 
-      # 入口
-      ENTRYPOINT ["java", "-jar", "/app.jar"]
-      
-      ```
+   ```dockerfile
+   # 基础镜像
+   FROM openjdk:17-jdk-alpine
+   # 设定时区
+   ENV TZ=Asia/Shanghai
+   RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone
+   
+   # 拷贝jar包
+   # 这里要注意前面是宿主机上的jar包的名字
+   COPY nytd-forum-demo-0.0.1-SNAPSHOT.jar /app.jar 
+   # 入口
+   ENTRYPOINT ["java", "-jar", "/app.jar"]
+   
+   ```
 
-      <img src="https://raw.githubusercontent.com/suzulang/typro-picgo/main/EveryDay/202402211045086.png" alt="image-20240221104526873" style="zoom:33%;" />
+   <img src="https://raw.githubusercontent.com/suzulang/typro-picgo/main/EveryDay/202402211045086.png" alt="image-20240221104526873" style="zoom:33%;" />
 
-   4. cd到nytd-forum-demo目录下执行`docker build -t nytd-forum-demo .`构建镜像
+   - cd到nytd-forum-demo目录下执行`docker build -t nytd-forum-demo .`构建镜像
 
-      执行`docker run --name nytd-forum-demo -p 8090:8080 --network demo -d nytd-forum-demo` 启动容器
+     执行`docker run --name nytd-forum-demo -p 8090:8080 --network demo -d nytd-forum-demo` 启动容器
 
 5. 最后用postman测试一下
 
