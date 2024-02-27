@@ -68,44 +68,11 @@ server {
     listen  [::]:80;
     server_name  localhost;
 
-    #access_log  /var/log/nginx/host.access.log  main;
-
     location / {
         root   /usr/share/nginx/html;
         index  index.html index.htm;
     }
 
-    #error_page  404              /404.html;
-
-    # redirect server error pages to the static page /50x.html
-    #
-    error_page   500 502 503 504  /50x.html;
-    location = /50x.html {
-        root   /usr/share/nginx/html;
-    }
-
-    # proxy the PHP scripts to Apache listening on 127.0.0.1:80
-    #
-    #location ~ \.php$ {
-    #    proxy_pass   http://127.0.0.1;
-    #}
-
-    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000
-    #
-    #location ~ \.php$ {
-    #    root           html;
-    #    fastcgi_pass   127.0.0.1:9000;
-    #    fastcgi_index  index.php;
-    #    fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
-    #    include        fastcgi_params;
-    #}
-
-    # deny access to .htaccess files, if Apache's document root
-    # concurs with nginx's one
-    #
-    #location ~ /\.ht {
-    #    deny  all;
-    #}
 }
 
 
@@ -151,4 +118,34 @@ http {
 
 /html/index.html
 
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>欢迎页面</title>
+</head>
+<body>
+    <h1>欢迎来到我的网站</h1>
+    <p>这是一个使用Nginx作为Web服务器的简单HTML页面。</p>
+</body>
+</html>
+
+```
+
+```shell
+docker run \
+  --name my-custom-nginx \
+  -p 80:80 \
+  -v /root/my-nginx/conf.d:/etc/nginx/conf.d \
+  -v /root/my-nginx/html:/usr/share/nginx/html \
+  -v /root/my-nginx/nginx.conf:/etc/nginx/nginx.conf \
+  -d \
+  nginx
+
+```
+
+
+
 /logs
+

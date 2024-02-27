@@ -1,32 +1,5 @@
 # 基于Springboot3 + Vue3的论坛前后端分离项目踩坑点
 
-## ThreadLocal简化方法的参数传递
-
-![image-20240201205629283](https://raw.githubusercontent.com/suzulang/typro-picgo/main/EveryDay/202402012056415.png)
-
-```java
- public Result<User> userInfo(@RequestHeader(name = "Authorization") String token) {
-        //根据用户名查询用户
-        Map<String, Object> map = JwtUtil.parseToken(token);
-        String username = (String) map.get("username");
-        User u = userService.findByUserName(username);
-        return Result.success(u);
- }
-```
-
-可以直接简化成
-
-```java
-    public Result<User> userInfo(){
-        Map<String, Object> map = ThreadLocalUtil.get();
-        String username = (String) map.get("username");
-        User u = userService.findByUserName(username);
-        return Result.success(u);
-    }
-```
-
-
-
 ## 用redis实现旧令牌登录失效
 
 
@@ -270,7 +243,7 @@ instance.interceptors.response.use(
 
    
 
-## 项目部署
+## 项目部署（无域名版本）
 
 因为用到了mysql和redis，所以后端的组成应该是mysql+redis+springboot3的镜像
 
@@ -356,6 +329,153 @@ instance.interceptors.response.use(
 5. 最后用postman测试一下
 
    <img src="https://raw.githubusercontent.com/suzulang/typro-picgo/main/EveryDay/202402211058418.png" alt="image-20240221105840202" style="zoom:33%;" />
+
+## 项目部署（有域名版本）
+
+- 创建一个网络，让mysql+redis+springboot3三者可以连通`docker network create demo`
+
+- 配置nginx外挂配置
+
+  1. 新建一个目录my-nginx。在这个目录下创建dist,conf.d,logs文件夹和nginx.conf文件，这里注意一个坑，在配置代理的时候，因为用了docker网络，所以用容器名替换localhost，不然前后端通信会出现问题
+
+     ```shell
+     #my-nginx/conf.d/default.conf
+     server {
+         listen       80;
+         listen  [::]:80;
+         server_name  jtp26.vip; # 用您的域名替换这里
+     
+         location /api {
+             proxy_pass http://nytd-forum:8080; # 转发到的目标地址和端口
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+             rewrite ^/api(/.*)$ $1 break; # 从请求路径中移除 /api
+         }
+     
+         location / {
+             root   /usr/share/nginx/html;
+             index  index.html index.htm;
+             try_files $uri $uri/ /index.html; # 添加这行
+             
+         }
+     }
+     
+     ```
+
+     ```shell
+     # my-nginx/nginx.conf
+     user  nginx;
+     worker_processes  auto;
+     
+     error_log  /var/log/nginx/error.log notice;
+     pid        /var/run/nginx.pid;
+     
+     
+     events {
+         worker_connections  1024;
+     }
+     
+     
+     http {
+         include       /etc/nginx/mime.types;
+         default_type  application/octet-stream;
+     
+         log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                           '$status $body_bytes_sent "$http_referer" '
+                           '"$http_user_agent" "$http_x_forwarded_for"';
+     
+         access_log  /var/log/nginx/access.log  main;
+     
+         sendfile        on;
+     
+         keepalive_timeout  65;
+     
+         include /etc/nginx/conf.d/*.conf;
+     }
+     
+     ```
+
+     2. 执行run命令
+
+        ```shell
+        docker run \
+          --name nytd-forum-ui \
+          --network=nytd-forum \ 
+          -p 80:80 \
+          -v /root/my-nginx/conf.d:/etc/nginx/conf.d \
+          -v /root/my-nginx/dist:/usr/share/nginx/html \
+          -v /root/my-nginx/nginx.conf:/etc/nginx/nginx.conf \
+          -v /root/my-nginx/logs:/var/log/nginx \
+          -d \
+          nginx
+        
+        ```
+
+- 其余步骤和无域名版本一样
+
+- 配置https
+
+  1. 申请一个https证书
+
+  2. 运行的时候将ssl证书挂在到容器内部
+
+     ```shell
+     docker run -d \
+       --name nytd-forum-ui \
+       --network nytd-forum \
+       -p 80:80 \
+       -p 443:443 \
+       -v /root/my-nginx/conf.d:/etc/nginx/conf.d \
+       -v /root/my-nginx/dist:/usr/share/nginx/html \
+       -v /root/my-nginx/nginx.conf:/etc/nginx/nginx.conf \
+       -v /root/my-nginx/logs:/var/log/nginx \
+       -v /root/my-nginx/ssl:/etc/nginx/ssl \
+       nginx
+     
+     ```
+
+  3. 修改nginx默认配置，将所有的80请求转到443
+
+     ```shel
+     server {
+         listen 80;
+         listen [::]:80;
+         server_name jtp26.vip; # 用您的域名替换这里
+     
+         # 将所有HTTP请求重定向到HTTPS
+         return 301 https://$server_name$request_uri;
+     }
+     
+     server {
+         listen 443 ssl http2;
+         listen [::]:443 ssl http2;
+         server_name jtp26.vip; # 用您的域名替换这里
+     
+         ssl_certificate /etc/nginx/ssl/jtp26.vip.pem; # SSL证书路径
+         ssl_certificate_key /etc/nginx/ssl/jtp26.vip.key; # SSL私钥路径
+     
+         location /api {
+             proxy_pass http://nytd-forum:8080; # 转发到的目标地址和端口
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+             rewrite ^/api(/.*)$ $1 break; # 从请求路径中移除 /api
+         }
+     
+         location / {
+             root /usr/share/nginx/html;
+             index index.html index.htm;
+             try_files $uri $uri/ /index.html; # 添加这行
+         }
+     
+     }
+     
+     ```
+
+     
 
 ## 参数校验@Validation
 
@@ -533,3 +653,100 @@ public class UserController {
       ```
 
       
+
+## 用ThreadLocal简化前端需要传递来的参数和接口参数列表
+
+1. 创建ThreadLocalUtil类
+
+   ```java
+   package com.example.demo1.util;
+   
+   public class ThreadLocalUtil {
+   
+       private static final ThreadLocal THREAD_LOCAL = new ThreadLocal();
+       public static <T> T get() {
+           return (T) THREAD_LOCAL.get();
+       }
+   
+       public static void set(Object value) {
+           THREAD_LOCAL.set(value);
+       }
+   
+       public static void remove() {
+           THREAD_LOCAL.remove();
+       }
+   }
+   ```
+
+2. 创建登录拦截器LoginInterceptor，在这个类里，对所有过来的请求，先进行处理。
+
+   为了防止内存泄露，和ThreadLocal对象中的变量混乱，在请求结束后，进行清除
+
+   ```java
+   package com.example.demo1.interceptor;
+   
+   import com.example.demo1.util.JwtUtil;
+   import com.example.demo1.util.ThreadLocalUtil;
+   import jakarta.servlet.http.HttpServletRequest;
+   import jakarta.servlet.http.HttpServletResponse;
+   import org.springframework.lang.Nullable;
+   import org.springframework.stereotype.Component;
+   import org.springframework.web.servlet.HandlerInterceptor;
+   
+   import java.util.Map;
+   @Component
+   public class LoginInterceptor implements HandlerInterceptor {
+       @Override
+       public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+           try {
+               String token = request.getHeader("Authorization");
+               Map<String, Object> map = JwtUtil.parseToken(token);
+               ThreadLocalUtil.set(map);
+               return true;
+           } catch (Exception e) {
+               //如果抛出异常了，则拦截请求，设置http状态码为401
+               response.setStatus(401);
+               return false;
+           }
+       }
+       @Override
+       public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable Exception ex) throws Exception {
+           ThreadLocalUtil.remove();
+       }
+   }
+   ```
+
+3. 创建WebConfig类
+
+   ```java
+   package com.example.demo1.config;
+   
+   import com.example.demo1.interceptor.LoginInterceptor;
+   import org.springframework.beans.factory.annotation.Autowired;
+   import org.springframework.context.annotation.Configuration;
+   import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+   import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+   @Configuration
+   public class WebConfig implements WebMvcConfigurer {
+       @Autowired
+       private LoginInterceptor loginInterceptor;
+       @Override
+       public void addInterceptors(InterceptorRegistry registry) {
+           registry.addInterceptor(loginInterceptor);
+       }
+   }
+   
+   ```
+
+   这样就在设计接口的时候，就不需要前端显式的传递重要的验证参数了，直接通过ThreadLocalUtil进行获取，这样简化了前端需要传过来的参数，增强了安全性
+
+   ```java
+       @RequestMapping("/add")
+       public String add(){
+           Map<Object,String> map =ThreadLocalUtil.get();
+           String username = (String)map.get("username");
+           return username;
+       }
+   ```
+
+   
