@@ -281,6 +281,9 @@ instance.interceptors.response.use(
      data:
        redis:
          host: ${redis.host}
+   mybatis:
+     configuration:
+       map-underscore-to-camel-case: true
    ```
 
    - 创建application-dev.yaml和application-local.yaml
