@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang='ts'>
-import { useTaskStore } from '@/stores/task.ts'
+import { useTaskStore } from '../stores/task.ts'
 import { ref } from 'vue';
 
 const taskStore = useTaskStore();
