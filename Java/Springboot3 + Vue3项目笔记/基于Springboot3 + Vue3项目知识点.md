@@ -1,8 +1,35 @@
 # 基于Springboot3 + Vue3的论坛前后端分离项目踩坑点
 
+[toc]
+
+
+
 ## 用redis实现旧令牌登录失效
 
+1. 登录接口生成token，并将token存到redis中
 
+   key:token	value:token
+
+   关键代码：
+
+   ```java
+   //登录成功,生成token
+   Map<String, Object> claims = new HashMap<>();
+   claims.put("id", loginUser.getId());
+   claims.put("username", loginUser.getUsername());
+   String token = JwtUtil.genToken(claims);
+   //把token存储到redis中
+   ValueOperations<String, String> operations = stringRedisTemplate.opsForValue();
+   operations.set(token,token,1, TimeUnit.HOURS);
+   ```
+
+2. 用户重置密码后，删除redis中key为token的键值对
+
+3. Login拦截器，会对会被排除的所有请求进行拦截处理
+
+   ![image-20240311100520095](https://raw.githubusercontent.com/suzulang/typro-picgo/main/EveryDay/202403111005493.png)
+
+   4. 这样防止了的，用户通过测试工具，伪造请求，拿到过期的token，即使令牌泄露了，也无法访问，被拦截器拦截的请求了，实现了权限校验的功能
 
 ## element-plus + tailwindcsss导入方式
 
@@ -26,7 +53,7 @@
    purge: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
    ```
 
-4. 在src下创建index.css文件
+4. 修改src/style.css文件
 
    ```css
    @tailwind base;
@@ -198,15 +225,11 @@ instance.interceptors.response.use(
         }
 ```
 
-## 前端环境搭建
+## 用vite创建vue项目
 
-初始化一个vue3项目`npm init vue@latest`
+初始化一个vue3项目`pnpm create vite my-vue-app --template vue`
 
-
-
-
-
-## 路由
+## vue-router配置
 
 1. 下载依赖`npm install vue-router`
 
@@ -567,189 +590,221 @@ public class UserController {
 
 ## 自定义校验
 
-1. 添加依赖
+添加依赖
 
-   ```xml
-           <dependency>
-               <groupId>org.springframework.boot</groupId>
-               <artifactId>spring-boot-starter-validation</artifactId>
-           </dependency>
-   ```
+```xml
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+```
 
-2. 创建注解类
+创建注解类
+
+```java
+package com.example.anno;
+
+import com.example.validation.PValidation;
+import jakarta.validation.Constraint;
+import jakarta.validation.Payload;
+
+import java.lang.annotation.*;
+
+@Documented
+@Target({ ElementType.FIELD })
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = {PValidation.class})
+public @interface PasswordAnno {
+    String message() default  "密码只能是纯数字";
+
+    Class<?>[] groups() default {};
+
+    Class<? extends Payload>[] payload() default {};
+}
+```
+
+定义校验规则
+
+```java
+package com.example.validation;
+
+import com.example.anno.PasswordAnno;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+
+public class PValidation implements ConstraintValidator<PasswordAnno, String> {
+    @Override
+    public boolean isValid(String value, ConstraintValidatorContext constraintValidatorContext) {
+        // 检查值是否为null
+        if (value == null) {
+            return false;
+        }
+        // 使用正则表达式检查字符串是否只包含数字
+        // 这个正则表达式表示：字符串只能由数字组成
+        return value.matches("\\d+");
+    }
+}
+
+```
+
+
+
+
+
+## 分组校验
+
+1. 定义分组
 
    ```java
-   package com.example.anno;
+       public interface Register extends Default {
    
-   import com.example.validation.PValidation;
-   import jakarta.validation.Constraint;
-   import jakarta.validation.Payload;
-   
-   import java.lang.annotation.*;
-   
-   @Documented
-   @Target({ ElementType.FIELD })
-   @Retention(RetentionPolicy.RUNTIME)
-   @Constraint(validatedBy = {PValidation.class})
-   public @interface PasswordAnno {
-       String message() default  "密码只能是纯数字";
-   
-       Class<?>[] groups() default {};
-   
-       Class<? extends Payload>[] payload() default {};
-   }
-   
+       }
    ```
 
-   3. 定义校验规则
+2. 定义指定操作校验的字段
 
-      ```java
-      package com.example.validation;
-      
-      import com.example.anno.PasswordAnno;
-      import jakarta.validation.ConstraintValidator;
-      import jakarta.validation.ConstraintValidatorContext;
-      
-      public class PValidation implements ConstraintValidator<PasswordAnno, String> {
-          @Override
-          public boolean isValid(String value, ConstraintValidatorContext constraintValidatorContext) {
-              // 检查值是否为null
-              if (value == null) {
-                  return false;
-              }
-              // 使用正则表达式检查字符串是否只包含数字
-              // 这个正则表达式表示：字符串只能由数字组成
-              return value.matches("\\d+");
-          }
-      }
-      
-      ```
+   ```java
+       @NotNull(groups= Register.class)
+       private String rePassword;
+   ```
+
+3. 找到对应的方法，在@Validate注解上加上这个组
+
+   ```java
+       @RequestMapping("/register")
+       public String register(@RequestBody @Validated(User.Register.class) User user){
+           return user.getUsername() + user.getPassword() + user.getRePassword();
+       }
+   ```
 
    
-
-   
-
-   ## 分组校验
-
-   1. 定义分组
-
-      ```java
-          public interface Register extends Default {
-      
-          }
-      ```
-
-   2. 定义指定操作校验的字段
-
-      ```java
-          @NotNull(groups= Register.class)
-          private String rePassword;
-      ```
-
-   3. 找到对应的方法，在@Validate注解上加上这个组
-
-      ```java
-          @RequestMapping("/register")
-          public String register(@RequestBody @Validated(User.Register.class) User user){
-              return user.getUsername() + user.getPassword() + user.getRePassword();
-          }
-      ```
-
-      
 
 ## 用ThreadLocal简化前端需要传递来的参数和接口参数列表
 
-1. 创建ThreadLocalUtil类
+- 创建ThreadLocalUtil类
 
-   ```java
-   package com.example.demo1.util;
-   
-   public class ThreadLocalUtil {
-   
-       private static final ThreadLocal THREAD_LOCAL = new ThreadLocal();
-       public static <T> T get() {
-           return (T) THREAD_LOCAL.get();
+```java
+package com.example.demo1.util;
+
+public class ThreadLocalUtil {
+
+    private static final ThreadLocal THREAD_LOCAL = new ThreadLocal();
+    public static <T> T get() {
+        return (T) THREAD_LOCAL.get();
+    }
+
+    public static void set(Object value) {
+        THREAD_LOCAL.set(value);
+    }
+
+    public static void remove() {
+        THREAD_LOCAL.remove();
+    }
+}
+```
+
+- 创建登录拦截器LoginInterceptor，在这个类里，对所有过来的请求，先进行处理。为了防止内存泄露，和ThreadLocal对象中的变量混乱，在请求结束后，进行清除
+
+```java
+package com.example.demo1.interceptor;
+
+import com.example.demo1.util.JwtUtil;
+import com.example.demo1.util.ThreadLocalUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+import java.util.Map;
+@Component
+public class LoginInterceptor implements HandlerInterceptor {
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        try {
+            String token = request.getHeader("Authorization");
+            Map<String, Object> map = JwtUtil.parseToken(token);
+            ThreadLocalUtil.set(map);
+            return true;
+        } catch (Exception e) {
+            //如果抛出异常了，则拦截请求，设置http状态码为401
+            response.setStatus(401);
+            return false;
+        }
+    }
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable Exception ex) throws Exception {
+        ThreadLocalUtil.remove();
+    }
+}
+```
+
+- 创建WebConfig类
+
+```java
+package com.example.demo1.config;
+
+import com.example.demo1.interceptor.LoginInterceptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    @Autowired
+    private LoginInterceptor loginInterceptor;
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(loginInterceptor);
+    }
+}
+
+```
+
+- 这样就在设计接口的时候，就不需要前端显式的传递重要的验证参数了，直接通过ThreadLocalUtil进行获取，这样简化了前端需要传过来的参数，增强了安全性
+
+```java
+    @RequestMapping("/add")
+    public String add(){
+        Map<Object,String> map =ThreadLocalUtil.get();
+        String username = (String)map.get("username");
+        return username;
+    }
+```
+
+
+
+
+
+## 前端@指向src
+
+1. 安装path包`pnpm install path`
+
+2. 修改vite.config.ts
+
+   ```ts
+   export default defineConfig({
+     plugins: [vue()],
+     resolve: {
+       alias: {
+         '@': path.resolve(__dirname, 'src')
        }
-   
-       public static void set(Object value) {
-           THREAD_LOCAL.set(value);
-       }
-   
-       public static void remove() {
-           THREAD_LOCAL.remove();
+     },
+   })
+   ```
+
+3. 修改tsconfig.json
+
+   ```json
+   "compilerOptions": {
+   		"baseUrl": ".",
+     	"paths": {
+         "@/*": ["src/*"]
        }
    }
    ```
 
-2. 创建登录拦截器LoginInterceptor，在这个类里，对所有过来的请求，先进行处理。
 
-   为了防止内存泄露，和ThreadLocal对象中的变量混乱，在请求结束后，进行清除
 
-   ```java
-   package com.example.demo1.interceptor;
-   
-   import com.example.demo1.util.JwtUtil;
-   import com.example.demo1.util.ThreadLocalUtil;
-   import jakarta.servlet.http.HttpServletRequest;
-   import jakarta.servlet.http.HttpServletResponse;
-   import org.springframework.lang.Nullable;
-   import org.springframework.stereotype.Component;
-   import org.springframework.web.servlet.HandlerInterceptor;
-   
-   import java.util.Map;
-   @Component
-   public class LoginInterceptor implements HandlerInterceptor {
-       @Override
-       public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-           try {
-               String token = request.getHeader("Authorization");
-               Map<String, Object> map = JwtUtil.parseToken(token);
-               ThreadLocalUtil.set(map);
-               return true;
-           } catch (Exception e) {
-               //如果抛出异常了，则拦截请求，设置http状态码为401
-               response.setStatus(401);
-               return false;
-           }
-       }
-       @Override
-       public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, @Nullable Exception ex) throws Exception {
-           ThreadLocalUtil.remove();
-       }
-   }
-   ```
 
-3. 创建WebConfig类
 
-   ```java
-   package com.example.demo1.config;
-   
-   import com.example.demo1.interceptor.LoginInterceptor;
-   import org.springframework.beans.factory.annotation.Autowired;
-   import org.springframework.context.annotation.Configuration;
-   import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-   import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-   @Configuration
-   public class WebConfig implements WebMvcConfigurer {
-       @Autowired
-       private LoginInterceptor loginInterceptor;
-       @Override
-       public void addInterceptors(InterceptorRegistry registry) {
-           registry.addInterceptor(loginInterceptor);
-       }
-   }
-   
-   ```
-
-   这样就在设计接口的时候，就不需要前端显式的传递重要的验证参数了，直接通过ThreadLocalUtil进行获取，这样简化了前端需要传过来的参数，增强了安全性
-
-   ```java
-       @RequestMapping("/add")
-       public String add(){
-           Map<Object,String> map =ThreadLocalUtil.get();
-           String username = (String)map.get("username");
-           return username;
-       }
-   ```
-
-   
