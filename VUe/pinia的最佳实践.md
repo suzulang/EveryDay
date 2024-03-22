@@ -129,4 +129,4 @@ import Login from './components/Login.vue'
 
 可以看到点击上面的按钮，会设置一个值，然后点击下面的按钮，可以或许到值，并且值是一样的，证明组件间的数据可以正常通信了
 
-> 项目代码：
+> 项目代码：https://github.com/suzulang/EveryDay/tree/main/%E7%AC%94%E8%AE%B0%E4%BB%A3%E7%A0%81/Vue/pinia-study
