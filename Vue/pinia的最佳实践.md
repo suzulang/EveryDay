@@ -1,4 +1,4 @@
-# pinia的最佳实践
+# pinia使用指南
 
 > 当我需要用pinia来管理token的话，应该怎么做？
 
